@@ -1,6 +1,7 @@
 """ Wrapper script for awscli which handles Okta auth """
 # pylint: disable=C0325,R0913,R0914
 from email.policy import default
+from http.cookiejar import LoadError, LWPCookieJar
 import os
 import sys
 import logging
@@ -140,9 +141,24 @@ def main(okta_profile, profile, verbose, version,
 
             logger.info("Force option selected, \
                 getting new credentials anyway.")
+        if cookie_jar is not None:
+            cookie_jar = LWPCookieJar(cookie_jar)
+            try:
+                cookie_jar.load()
+                logger.debug('Loaded cookies from %s: %r', cookie_jar.filename, cookie_jar)
+            except LoadError as e:
+                logger.debug('Error loading cookies from %s: %s', cookie_jar.filename, e)
+            except OSError as e:
+                logger.debug('Error loading cookies from %s: %s', cookie_jar.filename, e)
         get_credentials(
             aws_auth, okta_profile, profile, verbose, logger, token, cache, refresh_role, okta_username, okta_password
         )
+        if cookie_jar is not None:
+            try:
+                cookie_jar.save()
+                logger.debug('Saved cookies to %s', cookie_jar.filename)
+            except OSError as e:
+                logger.warning('Failed to save cookies to %s: %s', cookie_jar.filename, e)
 
     if awscli_args:
         aws_auth.execute_aws_args(awscli_args, logger)
