@@ -25,12 +25,13 @@ def okta_switch(logger):
 
 def get_credentials(aws_auth, okta_profile, profile,
                     verbose, logger, totp_token, cache, refresh_role, 
-                    okta_username=None, okta_password=None):
+                    okta_username=None, okta_password=None,
+                    user_agent=None):
     """ Gets credentials from Okta """
 
     okta_auth_config = OktaAuthConfig(logger)
     okta = OktaAuth(okta_profile, verbose, logger, totp_token, 
-        okta_auth_config, okta_username, okta_password)
+        okta_auth_config, okta_username, okta_password, user_agent=user_agent)
 
 
     _, assertion = okta.get_assertion()
@@ -102,10 +103,12 @@ to ~/.okta-credentials.cache\n')
 @click.option('-P', '--password', 'okta_password', help="Okta password")
 @click.option('--config', is_flag=True, help="Okta config initialization/addition")
 @click.option('-s', '--switch', is_flag=True, default=False, is_eager=True, help="Switch to another okta profile and refresh the token")
+@click.option('--user-agent', help="In requests to Okta, set the user agent header to this")
 @click.argument('awscli_args', nargs=-1, type=click.UNPROCESSED)
 def main(okta_profile, profile, verbose, version,
          debug, force, cache, lookup, awscli_args,
-         refresh_role, token, okta_username, okta_password, config, switch):
+         refresh_role, token, okta_username, okta_password, config, switch,
+         user_agent):
     """ Authenticate to awscli using Okta """
     if version:
         print(__version__)
@@ -139,7 +142,8 @@ def main(okta_profile, profile, verbose, version,
             logger.info("Force option selected, \
                 getting new credentials anyway.")
         get_credentials(
-            aws_auth, okta_profile, profile, verbose, logger, token, cache, refresh_role, okta_username, okta_password
+            aws_auth, okta_profile, profile, verbose, logger, token, cache, refresh_role, okta_username, okta_password,
+            user_agent
         )
 
     if awscli_args:
