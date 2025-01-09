@@ -27,12 +27,12 @@ def okta_switch(logger):
 def get_credentials(aws_auth, okta_profile, profile,
                     verbose, logger, totp_token, cache, refresh_role, 
                     okta_username=None, okta_password=None,
-                    cookie_jar=None, persistent_okta_session=False):
+                    cookie_jar=None, persistent_okta_session=False, user_agent=None):
     """ Gets credentials from Okta """
 
     okta_auth_config = OktaAuthConfig(logger)
     okta = OktaAuth(okta_profile, verbose, logger, totp_token, 
-        okta_auth_config, okta_username, okta_password, cookie_jar=cookie_jar)
+        okta_auth_config, okta_username, okta_password, cookie_jar=cookie_jar, user_agent=user_agent)
 
 
     _, assertion = okta.get_assertion(persistent_okta_session)
@@ -107,11 +107,12 @@ to ~/.okta-credentials.cache\n')
               help='Keep persistent Okta cookies in FILE')
 @click.option('--persistent-okta-session', is_flag=True,
               help='Store and reuse the Okta session when possible')
+@click.option('--user-agent', help="In requests to Okta, set the user agent header to this")
 @click.argument('awscli_args', nargs=-1, type=click.UNPROCESSED)
 def main(okta_profile, profile, verbose, version,
          debug, force, cache, lookup, awscli_args,
          refresh_role, token, okta_username, okta_password, config, switch,
-         cookie_jar, persistent_okta_session):
+         cookie_jar, persistent_okta_session, user_agent):
     """ Authenticate to awscli using Okta """
     if version:
         print(__version__)
@@ -155,7 +156,7 @@ def main(okta_profile, profile, verbose, version,
                 logger.debug('Error loading cookies from %s: %s', cookie_jar.filename, e)
         get_credentials(
             aws_auth, okta_profile, profile, verbose, logger, token, cache, refresh_role, okta_username, okta_password,
-            cookie_jar, persistent_okta_session,
+            cookie_jar, persistent_okta_session, user_agent,
         )
         if cookie_jar is not None:
             try:
