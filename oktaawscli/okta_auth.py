@@ -8,8 +8,6 @@ import requests
 from bs4 import BeautifulSoup as bs
 from oktaawscli.okta_auth_mfa_base import OktaAuthMfaBase
 from oktaawscli.okta_auth_mfa_app import OktaAuthMfaApp
-from oktaawscli.util import input
-
 
 class OktaAuth():
     """ Handles auth to Okta and returns SAML assertion """
@@ -57,8 +55,10 @@ class OktaAuth():
                 state_token = resp_json['stateToken']
                 mfa_base = OktaAuthMfaBase(self.logger, state_token, self.factor, self.totp_token)
                 session_token = mfa_base.verify_mfa(factors_list)
+                return session_token
             elif resp_json['status'] == 'SUCCESS':
                 session_token = resp_json['sessionToken']
+                return session_token
             elif resp_json['status'] == 'MFA_ENROLL':
                 self.logger.warning("""MFA not enrolled. Cannot continue.
 Please enroll an MFA factor in the Okta Web UI first!""")
@@ -73,9 +73,6 @@ Please contact you administrator in order to unlock the account!""")
         else:
             self.logger.error(resp_json)
             sys.exit(1)
-
-
-        return session_token
 
 
     def get_session(self, session_token):
@@ -129,7 +126,7 @@ Please contact you administrator in order to unlock the account!""")
         if hasattr(soup.title, 'string') and re.match(".* - Extra Verification$", soup.title.string):
             state_token = decode(re.search(r"var stateToken = '(.*)';", html.text).group(1), "unicode-escape")
         else:
-            self.logger.error("No Extra Verification")
+            self.logger.error(f"No Extra Verification. Title was {soup.title}")
             return None
 
         self.session.cookies['oktaStateToken'] = state_token
@@ -152,8 +149,8 @@ Please contact you administrator in order to unlock the account!""")
         """ Returns the SAML assertion from HTML """
         assertion = self.get_simple_assertion(html) or self.get_mfa_assertion(html)
 
-        if not assertion:
-            self.logger.error("SAML assertion not valid: " + assertion)
+        if assertion is None:
+            self.logger.error("SAML assertion not valid")
             sys.exit(-1)
         return assertion
 
