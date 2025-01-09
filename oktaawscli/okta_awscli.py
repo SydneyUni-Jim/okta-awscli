@@ -1,6 +1,7 @@
 """ Wrapper script for awscli which handles Okta auth """
 # pylint: disable=C0325,R0913,R0914
 from email.policy import default
+from http.cookiejar import LoadError, LWPCookieJar
 import os
 import sys
 import logging
@@ -25,15 +26,16 @@ def okta_switch(logger):
 
 def get_credentials(aws_auth, okta_profile, profile,
                     verbose, logger, totp_token, cache, refresh_role, 
-                    okta_username=None, okta_password=None):
+                    okta_username=None, okta_password=None,
+                    cookie_jar=None, persistent_okta_session=False):
     """ Gets credentials from Okta """
 
     okta_auth_config = OktaAuthConfig(logger)
     okta = OktaAuth(okta_profile, verbose, logger, totp_token, 
-        okta_auth_config, okta_username, okta_password)
+        okta_auth_config, okta_username, okta_password, cookie_jar=cookie_jar)
 
 
-    _, assertion = okta.get_assertion()
+    _, assertion = okta.get_assertion(persistent_okta_session)
     role = aws_auth.choose_aws_role(assertion, refresh_role)
     principal_arn, role_arn = role
 
@@ -60,7 +62,6 @@ def get_credentials(aws_auth, okta_profile, profile,
                          (os.path.expanduser('~'),), 'w')
             cache.write(exports)
             cache.close()
-        sys.exit(0)
     else:
         aws_auth.write_sts_token(access_key_id, secret_access_key,
                                  session_token_expiry, session_token)
@@ -102,10 +103,15 @@ to ~/.okta-credentials.cache\n')
 @click.option('-P', '--password', 'okta_password', help="Okta password")
 @click.option('--config', is_flag=True, help="Okta config initialization/addition")
 @click.option('-s', '--switch', is_flag=True, default=False, is_eager=True, help="Switch to another okta profile and refresh the token")
+@click.option('-j', '--cookie-jar', type=click.Path(dir_okay=False, writable=True, resolve_path=True),
+              help='Keep persistent Okta cookies in FILE')
+@click.option('--persistent-okta-session', is_flag=True,
+              help='Store and reuse the Okta session when possible')
 @click.argument('awscli_args', nargs=-1, type=click.UNPROCESSED)
 def main(okta_profile, profile, verbose, version,
          debug, force, cache, lookup, awscli_args,
-         refresh_role, token, okta_username, okta_password, config, switch):
+         refresh_role, token, okta_username, okta_password, config, switch,
+         cookie_jar, persistent_okta_session):
     """ Authenticate to awscli using Okta """
     if version:
         print(__version__)
@@ -138,9 +144,25 @@ def main(okta_profile, profile, verbose, version,
 
             logger.info("Force option selected, \
                 getting new credentials anyway.")
+        if cookie_jar is not None:
+            cookie_jar = LWPCookieJar(cookie_jar)
+            try:
+                cookie_jar.load(ignore_discard=persistent_okta_session, ignore_expires=persistent_okta_session)
+                logger.debug('Loaded cookies from %s: %r', cookie_jar.filename, cookie_jar)
+            except LoadError as e:
+                logger.debug('Error loading cookies from %s: %s', cookie_jar.filename, e)
+            except OSError as e:
+                logger.debug('Error loading cookies from %s: %s', cookie_jar.filename, e)
         get_credentials(
-            aws_auth, okta_profile, profile, verbose, logger, token, cache, refresh_role, okta_username, okta_password
+            aws_auth, okta_profile, profile, verbose, logger, token, cache, refresh_role, okta_username, okta_password,
+            cookie_jar, persistent_okta_session,
         )
+        if cookie_jar is not None:
+            try:
+                cookie_jar.save(ignore_discard=persistent_okta_session, ignore_expires=persistent_okta_session)
+                logger.debug('Saved cookies to %s', cookie_jar.filename)
+            except OSError as e:
+                logger.warning('Failed to save cookies to %s: %s', cookie_jar.filename, e)
 
     if awscli_args:
         aws_auth.execute_aws_args(awscli_args, logger)

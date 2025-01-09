@@ -10,11 +10,12 @@ except ImportError:
 
 class OktaAuthMfaBase():
     """ Handles base org Okta MFA """
-    def __init__(self, logger, state_token, factor, totp_token=None):
+    def __init__(self, logger, state_token, factor, totp_token=None, session=None):
         self.state_token = state_token
         self.logger = logger
         self.factor = factor
         self.totp_token = totp_token
+        self.session = requests.Session() if session is None else session
 
 
     def verify_mfa(self, factors_list):
@@ -95,7 +96,7 @@ class OktaAuthMfaBase():
                 req_data['answer'] = input('Enter MFA verification code: ')
 
         post_url = factor['_links']['verify']['href']
-        resp = requests.post(post_url, json=req_data)
+        resp = self.session.post(post_url, json=req_data)
         resp_json = resp.json()
         if 'status' in resp_json:
             if resp_json['status'] == "SUCCESS":
@@ -104,7 +105,7 @@ class OktaAuthMfaBase():
                 print("Waiting for push verification...")
                 correct_answer_shown = False
                 while True:
-                    resp = requests.post(
+                    resp = self.session.post(
                         resp_json['_links']['next']['href'], json=req_data)
                     resp_json = resp.json()
                     if resp_json['status'] == 'SUCCESS':
@@ -149,7 +150,7 @@ class OktaAuthMfaBase():
                             try:
                                 auth_response = u2f.authenticate(dev, challenge, resp_json['_embedded']['factor']['profile']['appId'] )
                                 req_data.update(auth_response)
-                                resp = requests.post(resp_json['_links']['next']['href'], json=req_data)
+                                resp = self.session.post(resp_json['_links']['next']['href'], json=req_data)
                                 resp_json = resp.json()
                                 if resp_json['status'] == 'SUCCESS':
                                     return resp_json['sessionToken']
